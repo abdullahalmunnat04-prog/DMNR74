@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DMNR — Bachelor Mess Manager</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+:root{
+  --bg:#0b1020; --card: rgba(255,255,255,0.03); --muted:#94a3b8; --accent:#7c3aed; --input-bg:#0f1724;
+}
+html,body{height:100%}
+body{
+  font-family:"Roboto",sans-serif;
+  background:var(--bg);
+  color:#e6eef8;
+  padding:20px;
+}
+.card{
+  background:var(--card);
+  border:1px solid rgba(255,255,255,0.04);
+  border-radius:12px;
+  padding:14px;
+}
+.tiny{ color:var(--muted); font-size:0.85rem; }
+.input, input[type=number], input[type=text], select {
+  background:var(--input-bg);
+  color:#e6eef8;
+  border:1px solid rgba(255,255,255,0.06);
+  padding:6px 8px;
+  border-radius:6px;
+}
+table{ border-collapse:collapse; width:100%; }
+th,td{ border:1px solid rgba(255,255,255,0.06); padding:6px; text-align:center; font-size:0.95rem }
+th{ background: rgba(255,255,255,0.02); font-weight:600; }
+.deposit-input{ width:180px; }
+.meal-input{ width:48px; }
+.other-input{ width:86px; }
+.daily-things{ width:420px; text-align:left; padding-left:8px; }
+.logo {
+  width:84px; height:84px; border-radius:50%;
+  background: linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06));
+  display:flex; align-items:center; justify-content:center;
+  border:2px solid rgba(124,58,237,0.25); flex-shrink:0;
+}
+.mess-name { font-size:3rem; font-weight:800; color:var(--accent); letter-spacing:3px; line-height:1; }
+.btn { background:var(--accent); color:white; padding:8px 12px; border-radius:8px; cursor:pointer; border:none; }
+.btn-ghost { background:transparent; border:1px solid rgba(255,255,255,0.06); color:#e6eef8; padding:6px 10px; border-radius:8px; }
+.btn-logout { background:#ef4444; }
+.footer-note{ font-size:0.85rem; color:var(--muted); margin-top:8px; }
+.status-get{ color:#16a34a; font-weight:700; } /* green */
+.status-give{ color:#ef4444; font-weight:700; } /* red */
+
+@media (max-width:980px){
+  .mess-name{ font-size:2rem; }
+  .daily-things{ width:160px; }
+  .deposit-input{ width:140px; }
+  .other-input{ width:60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN MODAL -->
+<div id="loginModal" style="position:fixed;inset:0;background:rgba(2,6,23,0.75);display:flex;align-items:center;justify-content:center;z-index:999;">
+  <div class="card" style="width:380px;">
+    <h3 style="font-size:1.2rem;margin-bottom:8px">Login</h3>
+    <p class="tiny" style="margin-bottom:12px">Choose role and enter password</p>
+
+    <label class="tiny">Role</label>
+    <select id="roleSelect" class="input" style="width:100%;margin-bottom:10px">
+      <option value="manager">Manager (Kazi Rabbi)</option>
+      <option value="member">Member</option>
+    </select>
+
+    <label class="tiny">Password</label>
+    <input id="loginPassword" type="password" class="input" placeholder="Password" style="width:100%;margin-bottom:10px" />
+
+    <div style="display:flex;gap:8px">
+      <button id="loginBtn" class="btn" style="flex:1">Login</button>
+    </div>
+
+    <p class="tiny footer-note" style="margin-top:12px">Payment (Bkash/Nagad): <strong>01884166247</strong></p>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main id="app" style="max-width:1200px;margin:0 auto;display:none">
+
+  <!-- HEADER -->
+  <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:18px;">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="logo" aria-hidden>
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.6)" stroke-width="1.6"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="rgba(124,58,237,0.95)" font-weight="700">DM</text></svg>
+      </div>
+      <div>
+        <div class="mess-name">DMNR</div>
+        <div class="tiny">Payment (Bkash/Nagad): <strong>01884166247</strong></div>
+      </div>
+    </div>
+
+    <div style="text-align:right;min-width:240px">
+      <div class="tiny">Total Deposit</div>
+      <div id="totalDeposit" style="font-weight:700;font-size:1.05rem">0.00 ৳</div>
+
+      <div class="tiny" style="margin-top:8px">Total Expense</div>
+      <div id="totalExpense" style="font-weight:700;font-size:1.05rem">0.00 ৳</div>
+
+      <div class="tiny" style="margin-top:8px">Total Meals</div>
+      <div id="totalMeals" style="font-weight:700">0</div>
+
+      <div class="tiny" style="margin-top:8px">Meal Rate (Expense ÷ Meal)</div>
+      <div id="mealRate" style="display:inline-block;background:rgba(124,58,237,0.12);padding:6px 8px;border-radius:999px;margin-top:6px">-</div>
+
+      <div style="margin-top:10px">
+        <button id="downloadAllDepositPDF" class="btn btn-ghost" title="Download per-person deposit summary (one PDF for all)">Download Deposits (PDF)</button>
+        <button id="logoutBtn" class="btn btn-logout" style="margin-left:8px">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div style="display:flex;gap:8px;margin:14px 0 18px 0;flex-wrap:wrap">
+    <button class="btn tab" data-tab="deposit">Per-person Deposit</button>
+    <button class="btn tab" data-tab="meals">Meal Record</button>
+    <button class="btn tab" data-tab="others">Others</button>
+    <button class="btn tab" data-tab="daily">Daily Expense</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="contentArea"></div>
+
+  <div class="tiny footer-note" style="margin-top:12px">Logged in as: <span id="whoLabel"></span></div>
+</main>
+
+<script>
+/* ------------------------
+   Data & Users
+   ------------------------ */
+const users = {
+  "Kazi Rabbi":"manager123",
+  "Munnat":"munnatpwd",
+  "Rakib":"rakibpwd",
+  "Ramim":"ramimpwd",
+  "Dip":"dippwd",
+  "Fozle Rabby":"fozlepwd",
+  "Noyon":"noyonpwd"
+};
+
+const members = ["Munnat","Rakib","Ramim","Dip","Kazi Rabbi","Fozle Rabby","Noyon"];
+const feeTypes = ["Rent Fee","Gas","Current","Internet","Meal Fee","Previous Fee","Extra"];
+
+let currentRole = null;
+let currentUser = null;
+
+/* storage */
+const LS_KEY = 'dmnr_v2_data';
+
+/* data objects */
+let deposits = {};
+let meals = {};
+let others = {}; // others[fee][member]
+let dailyExpenses = []; // {date, things, cost}
+let currentMonth = new Date().toLocaleString(undefined,{month:'long'});
+
+/* load / init */
+function seedDefaults(){
+  members.forEach(m => deposits[m]=0);
+  members.forEach(m => meals[m] = Array.from({length:31}, ()=>0));
+  feeTypes.forEach(ft => { others[ft] = {}; members.forEach(m=>others[ft][m]=0); });
+  dailyExpenses = Array.from({length:31}, (_,i)=>({date:i+1, things:'', cost:0}));
+}
+function loadData(){
+  const raw = localStorage.getItem(LS_KEY);
+  if(raw){
+    try{
+      const p = JSON.parse(raw);
+      deposits = p.deposits || {};
+      meals = p.meals || {};
+      others = p.others || {};
+      dailyExpenses = p.dailyExpenses || [];
+      currentMonth = p.currentMonth || currentMonth;
+    }catch(e){
+      seedDefaults();
+    }
+  } else seedDefaults();
+
+  // normalize
+  members.forEach(m=>{ deposits[m]=Number(deposits[m]||0); if(!Array.isArray(meals[m]) || meals[m].length<31) meals[m] = Array.from({length:31}, (_,i)=> Number((meals[m] && meals[m][i]) || 0)); });
+  feeTypes.forEach(ft=>{ if(!others[ft]) others[ft]={}; members.forEach(m=> others[ft][m] = Number((others[ft][m]||0))); });
+  if(!Array.isArray(dailyExpenses) || dailyExpenses.length<31) dailyExpenses = Array.from({length:31}, (_,i)=> ({date:i+1, things: (dailyExpenses[i] && dailyExpenses[i].things) ? dailyExpenses[i].things : '', cost: Number((dailyExpenses[i] && dailyExpenses[i].cost) || 0)}));
+}
+function saveData(){ localStorage.setItem(LS_KEY, JSON.stringify({deposits, meals, others, dailyExpenses, currentMonth})); }
+
+loadData();
+
+/* UI refs */
+const loginModal = document.getElementById('loginModal');
+const app = document.getElementById('app');
+const contentArea = document.getElementById('contentArea');
+const whoLabel = document.getElementById('whoLabel');
+
+const totalDepositEl = document.getElementById('totalDeposit');
+const totalExpenseEl = document.getElementById('totalExpense');
+const totalMealsEl = document.getElementById('totalMeals');
+const mealRateEl = document.getElementById('mealRate');
+
+const downloadAllDepositPDFBtn = document.getElementById('downloadAllDepositPDF');
+
+function fmt(n){ return Number(n||0).toLocaleString(undefined,{maximumFractionDigits:2}); }
+
+/* compute totals */
+function computeTotals(){
+  const totalDeposit = Object.values(deposits).reduce((a,b)=>a+Number(b||0),0);
+  const totalDaily = dailyExpenses.reduce((a,b)=>a+Number(b.cost||0),0);
+  let totalMeal = 0;
+  members.forEach(m => totalMeal += meals[m].reduce((a,b)=>a+Number(b||0),0));
+  return { totalDeposit, totalDaily, totalMeal };
+}
+function updateHeader(){
+  const {totalDeposit, totalDaily, totalMeal} = computeTotals();
+  totalDepositEl.textContent = fmt(totalDeposit)+' ৳';
+  totalExpenseEl.textContent = fmt(totalDaily)+' ৳';
+  totalMealsEl.textContent = totalMeal;
+  mealRateEl.textContent = totalMeal ? (fmt(totalDaily/totalMeal)+' ৳/meal') : '-';
+  saveData();
+}
+
+/* input attr */
+function inputAttr(){ return currentRole === 'manager' ? '' : 'disabled'; }
+
+/* -------------------------
+   RENDER: Per-person Deposit
+   ------------------------- */
+function renderDeposit(){
+  contentArea.innerHTML = '';
+  const wrapper = document.createElement('div'); wrapper.className='card';
+  wrapper.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:1.05rem">Per-person Deposit</h3>
+    <div style="font-size:0.9rem"><button id="downloadDepositSinglePDF" class="btn btn-ghost">Download This (All) PDF</button></div>
+  </div>`;
+  const table = document.createElement('table');
+  table.innerHTML = `<thead><tr><th>Member</th><th>Deposit (৳)</th><th>Member Meals</th><th>Meal Expense (৳)</th><th>Balance (Deposit − Meal Expense)</th></tr></thead>`;
+  const tbody = document.createElement('tbody');
+
+  members.forEach(m=>{
+    const memberMeals = meals[m].reduce((a,b)=>a+Number(b||0),0);
+    const { totalDaily, totalMeal } = (()=>{ const t = computeTotals(); return { totalDaily: t.totalDaily, totalMeal: t.totalMeal }; })();
+    const mealRate = totalMeal ? (totalDaily / totalMeal) : 0;
+    const mealExpense = memberMeals * mealRate;
+    const balance = Number(deposits[m]||0) - mealExpense;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="font-weight:600">${m}</td>
+      <td><input type="number" class="deposit-input" data-member="${m}" min="0" value="${deposits[m]}" ${inputAttr()} /></td>
+      <td class="member-meals">${memberMeals}</td>
+      <td class="member-meal-expense" data-member="${m}">${fmt(mealExpense)}</td>
+      <td class="member-balance" data-member="${m}">${fmt(balance)} <span class="member-status" data-member="${m}"></span></td>`;
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+
+  // download button listener (same as header one)
+  wrapper.querySelector('#downloadDepositSinglePDF').addEventListener('click', ()=> downloadAllDepositsPDF());
+
+  contentArea.appendChild(wrapper);
+
+  // listeners for deposit inputs
+  tbody.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', (e)=>{
+      const mem = e.target.dataset.member;
+      deposits[mem] = Number(e.target.value) || 0;
+      recomputeDepositRows();
+      updateHeader();
+    });
+  });
+
+  // recompute function to update mealExpense and balances when meals or daily expense changes
+  function recomputeDepositRows(){
+    const totals = computeTotals();
+    const mealRate = totals.totalMeal ? (totals.totalDaily / totals.totalMeal) : 0;
+    tbody.querySelectorAll('tr').forEach(tr=>{
+      const mem = tr.querySelector('td').textContent;
+      const memberMeals = meals[mem].reduce((a,b)=>a+Number(b||0),0);
+      const mealExpense = memberMeals * mealRate;
+      const depositVal = Number(deposits[mem]||0);
+      const balance = depositVal - mealExpense;
+      const expenseCell = tr.querySelector('.member-meal-expense');
+      const balanceCell = tr.querySelector('.member-balance');
+      expenseCell.textContent = fmt(mealExpense);
+      balanceCell.childNodes[0].textContent = fmt(balance) + ' ';
+      const statusSpan = tr.querySelector('.member-status');
+      if(balance > 0){
+        statusSpan.textContent = 'You will get';
+        statusSpan.className = 'member-status status-get';
+      } else if (balance < 0){
+        statusSpan.textContent = 'Have to give';
+        statusSpan.className = 'member-status status-give';
+      } else {
+        statusSpan.textContent = '';
+        statusSpan.className = 'member-status';
+      }
+    });
+  }
+
+  recomputeDepositRows();
+}
+
+/* -------------------------
+   RENDER: Meal Record
+   ------------------------- */
+function renderMeals(){
+  contentArea.innerHTML = '';
+  const wrapper = document.createElement('div'); wrapper.className='card';
+  wrapper.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:1.05rem">Meal Record — 31 days</h3>
+    <div><button id="downloadMealRecordPDF" class="btn btn-ghost">Download Meal Record (PDF)</button></div></div>`;
+  const table = document.createElement('table');
+  let head = '<thead><tr><th>Member</th>';
+  for(let d=1; d<=31; d++) head += `<th>${d}</th>`;
+  head += '<th>Total</th></tr></thead>';
+  table.innerHTML = head;
+  const tbody = document.createElement('tbody');
+
+  members.forEach(m=>{
+    const tr = document.createElement('tr');
+    let row = `<td style="font-weight:600">${m}</td>`;
+    for(let d=0; d<31; d++){
+      row += `<td><input type="number" class="meal-input" data-member="${m}" data-day="${d}" min="0" value="${meals[m][d]}" ${inputAttr()} /></td>`;
+    }
+    row += `<td class="member-sum" data-member="${m}">0</td>`;
+    tr.innerHTML = row;
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+  contentArea.appendChild(wrapper);
+
+  // recompute totals
+  function recompute(){
+    let grand = 0;
+    tbody.querySelectorAll('tr').forEach(tr=>{
+      const mem = tr.querySelector('td').textContent;
+      let sum = 0;
+      tr.querySelectorAll('input').forEach(inp=>{
+        sum += Number(inp.value) || 0;
+      });
+      tr.querySelector('.member-sum').textContent = sum;
+      grand += sum;
+    });
+    // update meals data
+    tbody.querySelectorAll('input').forEach(inp=>{
+      const mem = inp.dataset.member;
+      const day = Number(inp.dataset.day);
+      meals[mem][day] = Number(inp.value) || 0;
+    });
+    updateHeader();
+  }
+
+  tbody.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', recompute);
+  });
+
+  // initial
+  recompute();
+
+  // download meal record PDF
+  wrapper.querySelector('#downloadMealRecordPDF').addEventListener('click', ()=> downloadMealRecordPDF());
+}
+
+/* -------------------------
+   RENDER: Others
+   ------------------------- */
+function renderOthers(){
+  contentArea.innerHTML = '';
+  const wrapper = document.createElement('div'); wrapper.className='card';
+  wrapper.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:1.05rem">Others — fees & extra</h3><div></div></div>`;
+
+  const table = document.createElement('table');
+  let head = '<thead><tr><th>Fee Type</th>';
+  members.forEach(m=> head += `<th>${m}</th>`);
+  head += '<th>Total</th></tr></thead>';
+  table.innerHTML = head;
+  const tbody = document.createElement('tbody');
+
+  feeTypes.forEach(ft=>{
+    const tr = document.createElement('tr');
+    let row = `<td style="font-weight:600">${ft}</td>`;
+    members.forEach(m=> row += `<td><input type="number" class="other-input" data-fee="${ft}" data-member="${m}" min="0" value="${others[ft][m]}" ${inputAttr()} /></td>`);
+    row += `<td class="fee-total" data-fee="${ft}">0</td>`;
+    tr.innerHTML = row;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+
+  // per-member download buttons
+  const downloads = document.createElement('div');
+  downloads.style.marginTop='10px';
+  members.forEach(m=>{
+    const b = document.createElement('button');
+    b.className = 'btn btn-ghost';
+    b.style.marginRight='8px';
+    b.textContent = `Download ${m} Fees (PDF)`;
+    b.addEventListener('click', ()=> downloadMemberFeesPDF(m));
+    downloads.appendChild(b);
+  });
+  wrapper.appendChild(downloads);
+  contentArea.appendChild(wrapper);
+
+  function recompute(){
+    tbody.querySelectorAll('tr').forEach(tr=>{
+      const ft = tr.querySelector('td').textContent;
+      let sum = 0;
+      tr.querySelectorAll('input').forEach(inp=>{
+        const mem = inp.dataset.member;
+        const val = Number(inp.value) || 0;
+        others[ft][mem] = val;
+        sum += val;
+      });
+      tr.querySelector('.fee-total').textContent = fmt(sum);
+    });
+    updateHeader();
+  }
+
+  tbody.querySelectorAll('input').forEach(inp=> inp.addEventListener('input', recompute));
+  recompute();
+}
+
+/* -------------------------
+   RENDER: Daily Expense
+   ------------------------- */
+function renderDaily(){
+  contentArea.innerHTML = '';
+  const wrapper = document.createElement('div'); wrapper.className='card';
+  wrapper.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+    <h3 style="font-size:1.05rem">Daily Expense — <span id="monthLabel">${currentMonth}</span></h3>
+    <div><label class="tiny">Month: <input id="monthInput" class="input" type="text" value="${currentMonth}" ${inputAttr()} /></label></div>
+  </div>`;
+
+  const table = document.createElement('table');
+  table.innerHTML = `<thead><tr><th style="width:80px">Date</th><th style="text-align:left">Things Bought</th><th style="width:140px">Cost (৳)</th></tr></thead>`;
+  const tbody = document.createElement('tbody');
+  dailyExpenses.forEach((d,idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${d.date}</td>
+      <td style="text-align:left"><input type="text" class="daily-things" data-day="${idx}" data-field="things" value="${d.things}" ${inputAttr()} style="width:95%"/></td>
+      <td><input type="number" class="daily-cost" data-day="${idx}" data-field="cost" min="0" value="${d.cost}" ${inputAttr()} /></td>`;
+    tbody.appendChild(tr);
+  });
+  const tfoot = document.createElement('tfoot');
+  tfoot.innerHTML = `<tr><th colspan="2">Total</th><th id="dailySum">0</th></tr>`;
+  table.appendChild(tbody); table.appendChild(tfoot);
+  wrapper.appendChild(table);
+
+  // download button
+  const btnWrap = document.createElement('div'); btnWrap.style.marginTop='10px';
+  const dlBtn = document.createElement('button'); dlBtn.className='btn'; dlBtn.textContent='Download Daily Expense (PDF)';
+  dlBtn.addEventListener('click', ()=> downloadDailyPDF());
+  btnWrap.appendChild(dlBtn);
+  wrapper.appendChild(btnWrap);
+
+  contentArea.appendChild(wrapper);
+
+  function recompute(){
+    let s = 0;
+    tbody.querySelectorAll('input.daily-cost').forEach(inp=>{
+      const day = Number(inp.dataset.day);
+      const val = Number(inp.value) || 0;
+      dailyExpenses[day].cost = val;
+      s += val;
+    });
+    tbody.querySelectorAll('input.daily-things').forEach(inp=>{
+      const day = Number(inp.dataset.day);
+      dailyExpenses[day].things = inp.value;
+    });
+    document.getElementById('dailySum').textContent = fmt(s);
+    const mid = document.getElementById('monthInput');
+    if(mid){ currentMonth = mid.value; document.getElementById('monthLabel').textContent = currentMonth; }
+    updateHeader();
+  }
+
+  tbody.querySelectorAll('input').forEach(inp=> inp.addEventListener('input', recompute));
+  const monthInput = document.getElementById('monthInput'); if(monthInput) monthInput.addEventListener('input', recompute);
+  recompute();
+}
+
+/* -------------------------
+   PDF Export Functions
+   ------------------------- */
+
+/* Download Daily Expense PDF */
+async function downloadDailyPDF(){
+  // create temp element
+  const div = document.createElement('div');
+  div.style.width = '794px';
+  div.style.background = '#fff';
+  div.style.color = '#000';
+  div.style.padding = '20px';
+  div.style.fontFamily = 'Roboto, Arial, sans-serif';
+  div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:60px;height:60px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-weight:700">DM</div>
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#7c3aed">DMNR</div>
+          <div style="font-size:12px">Daily Expense — ${currentMonth}</div>
+        </div>
+      </div>
+      <div style="text-align:right;font-size:12px">Payment: 01884166247</div>
+    </div><hr style="margin:10px 0;">`;
+
+  let tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="border:1px solid #ccc;padding:6px">Date</th><th style="border:1px solid #ccc;padding:6px">Item</th><th style="border:1px solid #ccc;padding:6px">Cost (৳)</th></tr></thead><tbody>`;
+  let total = 0;
+  dailyExpenses.forEach(d=>{
+    tableHtml += `<tr><td style="border:1px solid #ccc;padding:6px;text-align:center">${d.date}</td><td style="border:1px solid #ccc;padding:6px">${d.things||''}</td><td style="border:1px solid #ccc;padding:6px;text-align:right">${fmt(d.cost)}</td></tr>`;
+    total += Number(d.cost||0);
+  });
+  tableHtml += `</tbody><tfoot><tr><th colspan="2" style="text-align:right;padding:6px;border:1px solid #ccc">Total</th><th style="text-align:right;padding:6px;border:1px solid #ccc">${fmt(total)}</th></tr></tfoot></table>`;
+  div.innerHTML += tableHtml;
+
+  document.body.appendChild(div);
+  const canvas = await html2canvas(div, { scale: 2, useCORS: true });
+  const img = canvas.toDataURL('image/png');
+  document.body.removeChild(div);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','mm','a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const imgProps = pdf.getImageProperties(img);
+  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  pdf.addImage(img,'PNG',0,0,pdfWidth,pdfHeight);
+  pdf.save(`DMNR_DailyExpense_${currentMonth}.pdf`);
+}
+
+/* Download member fees (vertical) */
+async function downloadMemberFeesPDF(member){
+  const div = document.createElement('div');
+  div.style.width='500px'; div.style.background='#fff'; div.style.color='#000'; div.style.padding='18px'; div.style.fontFamily='Roboto, Arial, sans-serif';
+  div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:10px"><div style="width:48px;height:48px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-weight:700">DM</div><div><div style="font-size:18px;font-weight:800;color:#7c3aed">DMNR</div><div style="font-size:12px">Member Fees — ${member}</div></div></div><div style="text-align:right;font-size:12px">Payment: 01884166247</div></div><hr style="margin:10px 0;">`;
+
+  let html = `<div style="font-size:13px">`;
+  let total = 0;
+  feeTypes.forEach(ft=>{
+    const val = Number(others[ft][member]||0);
+    html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ddd"><div>${ft}</div><div style="font-weight:700">${fmt(val)}</div></div>`;
+    total += val;
+  });
+  html += `<div style="display:flex;justify-content:space-between;padding:10px 0;margin-top:8px;font-size:14px"><div style="font-weight:800">Total</div><div style="font-weight:800">${fmt(total)}</div></div>`;
+  html += `</div>`;
+  div.innerHTML += html;
+
+  document.body.appendChild(div);
+  const canvas = await html2canvas(div, { scale:2, useCORS:true });
+  const img = canvas.toDataURL('image/png');
+  document.body.removeChild(div);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','mm','a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const imgProps = pdf.getImageProperties(img);
+  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  pdf.addImage(img,'PNG',0,0,pdfWidth,pdfHeight);
+  pdf.save(`DMNR_${member}_Fees.pdf`);
+}
+
+/* Download Meal Record PDF (single page) */
+async function downloadMealRecordPDF(){
+  // Build DOM
+  const div = document.createElement('div');
+  div.style.width='794px'; div.style.background='#fff'; div.style.color='#000'; div.style.padding='20px'; div.style.fontFamily='Roboto, Arial, sans-serif';
+  div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:10px"><div style="width:60px;height:60px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-weight:700">DM</div><div><div style="font-size:22px;font-weight:800;color:#7c3aed">DMNR</div><div style="font-size:12px">Meal Record</div></div></div><div style="text-align:right;font-size:12px">Payment: 01884166247</div></div><hr style="margin:10px 0;">`;
+  // table
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="border:1px solid #ccc;padding:6px">Member</th>`;
+  for(let d=1; d<=31; d++) html += `<th style="border:1px solid #ccc;padding:6px">${d}</th>`;
+  html += `<th style="border:1px solid #ccc;padding:6px">Total</th></tr></thead><tbody>`;
+  members.forEach(m=>{
+    html += `<tr><td style="border:1px solid #ccc;padding:6px">${m}</td>`;
+    let sum = 0;
+    for(let d=0; d<31; d++){
+      const v = Number(meals[m][d]||0);
+      sum += v;
+      html += `<td style="border:1px solid #ccc;padding:6px;text-align:center">${v}</td>`;
+    }
+    html += `<td style="border:1px solid #ccc;padding:6px;text-align:center">${sum}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  div.innerHTML += html;
+
+  document.body.appendChild(div);
+  const canvas = await html2canvas(div, {scale:2, useCORS:true});
+  const img = canvas.toDataURL('image/png');
+  document.body.removeChild(div);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','mm','a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const imgProps = pdf.getImageProperties(img);
+  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  pdf.addImage(img,'PNG',0,0,pdfWidth,pdfHeight);
+  pdf.save(`DMNR_MealRecord.pdf`);
+}
+
+/* Download per-person deposit summary (single PDF containing every member) */
+async function downloadAllDepositsPDF(){
+  // Build doc
+  const div = document.createElement('div');
+  div.style.width='794px'; div.style.background='#fff'; div.style.color='#000'; div.style.padding='20px'; div.style.fontFamily='Roboto, Arial, sans-serif';
+  div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:10px"><div style="width:60px;height:60px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;color:#7c3aed;font-weight:700">DM</div><div><div style="font-size:22px;font-weight:800;color:#7c3aed">DMNR</div><div style="font-size:12px">Per-person Summary — ${currentMonth}</div></div></div><div style="text-align:right;font-size:12px">Payment: 01884166247</div></div><hr style="margin:10px 0;">`;
+
+  const totals = computeTotals();
+  const mealRate = totals.totalMeal ? (totals.totalDaily / totals.totalMeal) : 0;
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="border:1px solid #ccc;padding:6px">Member</th><th style="border:1px solid #ccc;padding:6px">Deposit (৳)</th><th style="border:1px solid #ccc;padding:6px">Meals</th><th style="border:1px solid #ccc;padding:6px">Meal Expense (৳)</th><th style="border:1px solid #ccc;padding:6px">Balance</th></tr></thead><tbody>`;
+  members.forEach(m=>{
+    const memberMeals = meals[m].reduce((a,b)=>a+Number(b||0),0);
+    const mealExpense = memberMeals * mealRate;
+    const balance = Number(deposits[m]||0) - mealExpense;
+    html += `<tr><td style="border:1px solid #ccc;padding:6px">${m}</td><td style="border:1px solid #ccc;padding:6px;text-align:right">${fmt(deposits[m])}</td><td style="border:1px solid #ccc;padding:6px;text-align:center">${memberMeals}</td><td style="border:1px solid #ccc;padding:6px;text-align:right">${fmt(mealExpense)}</td><td style="border:1px solid #ccc;padding:6px;text-align:right">${fmt(balance)}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  div.innerHTML += html;
+
+  document.body.appendChild(div);
+  const canvas = await html2canvas(div, {scale:2, useCORS:true});
+  const img = canvas.toDataURL('image/png');
+  document.body.removeChild(div);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','mm','a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const imgProps = pdf.getImageProperties(img);
+  const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+  pdf.addImage(img,'PNG',0,0,pdfWidth,pdfHeight);
+  pdf.save(`DMNR_PerPersonSummary_${currentMonth}.pdf`);
+}
+
+/* -------------------------
+   Login/Logout & Tab wiring
+   ------------------------- */
+document.getElementById('loginBtn').addEventListener('click', ()=>{
+  const role = document.getElementById('roleSelect').value;
+  const pwd = document.getElementById('loginPassword').value;
+  let ok=false;
+  if(role === 'manager' && pwd === users['Kazi Rabbi']){ ok=true; currentRole='manager'; currentUser='Kazi Rabbi'; }
+  else if(role === 'member'){
+    for(const u of Object.keys(users)){
+      if(u === 'Kazi Rabbi') continue;
+      if(pwd === users[u]){ ok=true; currentRole='member'; currentUser=u; break; }
+    }
+  }
+  if(!ok){ alert('Wrong password'); return; }
+  loginModal.style.display = 'none';
+  app.style.display = 'block';
+  document.getElementById('whoLabel').textContent = `${currentUser} (${currentRole})`;
+  // default tab
+  setActiveTab('deposit'); renderCurrent();
+  updateHeader();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  loginModal.style.display = 'flex';
+  app.style.display = 'none';
+  document.getElementById('loginPassword').value = '';
+  currentRole = null; currentUser = null;
+});
+
+function setActiveTab(tab){
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(t => { t.style.opacity = t.dataset.tab === tab ? '1' : '0.8'; });
+  window.activeTab = tab;
+}
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{ setActiveTab(btn.dataset.tab); renderCurrent(); });
+});
+
+function renderCurrent(){
+  if(window.activeTab === 'deposit') renderDeposit();
+  else if(window.activeTab === 'meals') renderMeals();
+  else if(window.activeTab === 'others') renderOthers();
+  else if(window.activeTab === 'daily') renderDaily();
+  document.getElementById('whoLabel').textContent = `${currentUser} (${currentRole})`;
+}
+
+/* attach downloadAllDeposits button */
+downloadAllDepositPDFBtn.addEventListener('click', ()=> downloadAllDepositsPDF());
+
+/* initial */
+loginModal.style.display = 'flex';
+app.style.display = 'none';
+setActiveTab('deposit');
+updateHeader();
+
+/* expose some functions for debugging in console if needed */
+window.dmnr = { deposits, meals, others, dailyExpenses, downloadDailyPDF, downloadMemberFeesPDF, downloadMealRecordPDF, downloadAllDepositsPDF, saveData };
+
+</script>
+</body>
+</html>
